@@ -1,56 +1,27 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. UI Configuration
+# 1. UI Setup
 st.set_page_config(page_title="Junior Core Accounting Tutor", layout="wide")
 
 if 'xp' not in st.session_state: st.session_state.xp = 0
 if 'messages' not in st.session_state: st.session_state.messages = []
 
 st.title("🎓 Junior Core Accounting Tutor")
-st.markdown("---")
+st.sidebar.title("🏆 Progress Tracker")
+st.sidebar.metric("Total XP", f"{st.session_state.xp}/100")
 
-# 2. Setup the Live Connection with Auto-Retry Logic
-@st.cache_resource
-def load_model():
+# 2. Direct Brain Connection
+# We use 'gemini-1.5-flash' - it is the most stable name globally
+try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    
-    # Try the three most common model name variations
-    model_names = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-flash-latest"]
-    
-    for name in model_names:
-        try:
-            model = genai.GenerativeModel(
-                model_name=name,
-                system_instruction="You are the Junior Core Accounting Tutor. Be Socratic. Award '+10 XP' for right answers."
-            )
-            # Test if it actually works
-            model.generate_content("test")
-            return model
-        except:
-            continue
-    return None
-
-model = load_model()
-
-if model:
-    st.sidebar.success("✅ AI Brain Connected")
-else:
-    st.sidebar.error("❌ Connection Error")
-    st.error("Google is having trouble finding the AI model. Check your API Key in Secrets.")
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    st.sidebar.success("✅ Brain Active")
+except Exception as e:
+    st.sidebar.error("❌ Key Not Found")
     st.stop()
 
-# 3. Sidebar
-with st.sidebar:
-    st.title("🏆 Progress Tracker")
-    st.metric("Total XP", f"{st.session_state.xp}/100")
-    st.progress(min(st.session_state.xp / 100, 1.0))
-    if st.button("Reset Session"):
-        st.session_state.xp = 0
-        st.session_state.messages = []
-        st.rerun()
-
-# 4. Chat Interface
+# 3. Chat Logic
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -61,15 +32,18 @@ if prompt := st.chat_input("Ask a question about your Master Doc..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        # The prompt that makes it act like your Gem
+        full_prompt = f"You are a Socratic Accounting Tutor for Junior Core. Use a supportive tone. If the user is right, say '+10 XP'. Question: {prompt}"
+        
         try:
-            response = model.generate_content(prompt)
-            full_response = response.text
+            response = model.generate_content(full_prompt)
+            answer = response.text
             
-            if "+10 XP" in full_response:
+            if "+10 XP" in answer:
                 st.session_state.xp += 10
                 st.balloons()
-            
-            st.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+                
+            st.markdown(answer)
+            st.session_state.messages.append({"role": "assistant", "content": answer})
         except Exception as e:
-            st.error(f"Brain Overload: {e}")
+            st.error("Connection lag. Please try that message again!")
