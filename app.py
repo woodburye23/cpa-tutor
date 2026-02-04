@@ -1,37 +1,47 @@
 import streamlit as st
 import google.generativeai as genai
 import os
-from PyPDF2 import PdfReader # You might need to add this to requirements.txt
 
-# 1. Setup Brain
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+# 1. UI Setup (Do this FIRST so the screen isn't blank)
+st.set_page_config(page_title="CPA Socratic Lab", layout="wide")
 
-# 2. Function to read your Master Docs
-def get_pdf_text():
-    text = ""
-    # This looks for any PDF you uploaded to your GitHub folder
-    for file in os.listdir():
-        if file.endswith(".pdf"):
-            reader = PdfReader(file)
-            for page in reader.pages:
-                text += page.extract_text()
-    return text
+if 'xp' not in st.session_state:
+    st.session_state.xp = 0
 
-# 3. Load the knowledge once
-if "knowledge_base" not in st.session_state:
-    with st.spinner("Reading your Master Docs..."):
-        st.session_state.knowledge_base = get_pdf_text()
+with st.sidebar:
+    st.title("🏆 CPA Progress")
+    st.metric("Total XP", st.session_state.xp)
+    st.progress(min(st.session_state.xp / 100, 1.0))
+    st.write("Status: Active")
 
-# 4. Socratic Logic
-SYSTEM_PROMPT = f"""
-You are Ella's Socratic CPA Tutor. 
-KNOWLEDGE BASE FROM MASTER DOCS: {st.session_state.knowledge_base[:5000]} 
+st.title("🎓 Socratic Accounting Tutor")
 
-RULES:
-- Never give the answer.
-- Reference the Master Doc concepts specifically.
-- Award '+10 XP' for good logic.
-"""
+# 2. Safe API Connection
+try:
+    if "GOOGLE_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        st.success("AI Brain Connected!")
+    else:
+        st.error("API Key missing in Streamlit Secrets!")
+except Exception as e:
+    st.error(f"Connection Error: {e}")
 
-# ... (Rest of your chat UI code)
+# 3. Simple Chat Interface
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("Ask me about your Master Doc..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+    
+    # Simple AI Response
+    try:
+        response = model.generate_content(f"You are a Socratic tutor. Use a supportive tone. User says: {prompt}")
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
+        st.chat_message("assistant").write(response.text)
+    except:
+        st.write("AI is thinking... (Check your API key settings if this hangs)")
