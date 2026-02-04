@@ -1,15 +1,16 @@
 import streamlit as st
 import google.generativeai as genai
 import time
-import json
 from PyPDF2 import PdfReader
 
 # 1. Page Config
 st.set_page_config(page_title="Junior Core Master Studio", layout="wide")
 
-# Initialize Session States
+# --- INITIALIZE SESSION STATE ---
 if 'xp' not in st.session_state: st.session_state.xp = 0
-if 'folders' not in st.session_state: st.session_state.folders = {"Junior Core": []}
+# Each folder now stores: {'messages': [], 'files': []}
+if 'folders' not in st.session_state: 
+    st.session_state.folders = {"Junior Core": {"messages": [], "files": []}}
 if 'current_folder' not in st.session_state: st.session_state.current_folder = "Junior Core"
 if 'mode' not in st.session_state: st.session_state.mode = "chat"
 if 'sprint_end' not in st.session_state: st.session_state.sprint_end = None
@@ -24,10 +25,10 @@ def init_ai():
 
 model = init_ai()
 
-# 3. Helper Function to Read PDFs and Text
-def get_all_text(files):
+# 3. Enhanced File Reader (Processes the folder-specific files)
+def process_folder_files(file_objects):
     combined_text = ""
-    for file in files:
+    for file in file_objects:
         try:
             if file.name.lower().endswith('.pdf'):
                 pdf_reader = PdfReader(file)
@@ -58,70 +59,70 @@ def pomodoro_timer():
             st.session_state.sprint_end = time.time() + (25 * 60)
             st.rerun()
 
-# 5. Sidebar Tools
+# 5. Sidebar: The Folder & Storage System
 with st.sidebar:
     st.title(f"🏆 {st.session_state.xp} XP")
     st.progress(min(st.session_state.xp / 100, 1.0))
     st.divider()
     pomodoro_timer()
     st.divider()
-    st.subheader("📁 Class Folders")
-    new_folder = st.text_input("New Folder Name")
-    if st.button("Create Folder") and new_folder:
-        if new_folder not in st.session_state.folders:
-            st.session_state.folders[new_folder] = []
-            st.session_state.current_folder = new_folder
+    
+    st.subheader("📁 Manage Folders")
+    new_folder_name = st.text_input("Create New Class Folder")
+    if st.button("Create") and new_folder_name:
+        if new_folder_name not in st.session_state.folders:
+            st.session_state.folders[new_folder_name] = {"messages": [], "files": []}
+            st.session_state.current_folder = new_folder_name
             st.rerun()
-    st.session_state.current_folder = st.selectbox("Current Focus", list(st.session_state.folders.keys()))
+
+    st.session_state.current_folder = st.selectbox("Switch Folder", list(st.session_state.folders.keys()))
+    
+    st.divider()
+    # FOLDER-SPECIFIC UPLOADER
+    st.subheader(f"📥 Upload to '{st.session_state.current_folder}'")
+    uploaded = st.file_uploader("Drop notes here", type=['pdf', 'txt'], accept_multiple_files=True, key=f"uploader_{st.session_state.current_folder}")
+    
+    # Save the files to the specific folder's state
+    if uploaded:
+        st.session_state.folders[st.session_state.current_folder]['files'] = uploaded
+        st.success(f"Grounded in {len(uploaded)} files.")
+
     st.divider()
     if st.button("💬 Socratic Tutor"): st.session_state.mode = "chat"
-    if st.button("📝 Multi-Doc Quiz"): st.session_state.mode = "quiz"
-    if st.button("🎮 Concept Challenge"): st.session_state.mode = "game"
-    st.divider()
-    uploaded_files = st.file_uploader("Upload Notes (PDF/TXT)", type=['pdf', 'txt'], accept_multiple_files=True)
-    if uploaded_files:
-        st.success(f"🟢 {len(uploaded_files)} Docs Grounded")
+    if st.button("📝 Topic Quiz"): st.session_state.mode = "quiz"
+    if st.button("🎮 Challenge Mode"): st.session_state.mode = "game"
 
 # 6. Main Content Area
-st.title(f"🎓 {st.session_state.current_folder}")
+st.title(f"📂 {st.session_state.current_folder} Studio")
 
 if not model:
     st.error("AI connection failed. Check your API key!")
     st.stop()
 
-# --- MODE: CHAT (The Focused Hybrid Tutor) ---
+# --- MODE: CHAT (Private Folder Context) ---
 if st.session_state.mode == "chat":
-    for msg in st.session_state.folders[st.session_state.current_folder]:
+    # Show history for CURRENT folder only
+    for msg in st.session_state.folders[st.session_state.current_folder]['messages']:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ask a specific question..."):
-        st.session_state.folders[st.session_state.current_folder].append({"role": "user", "content": prompt})
+    if prompt := st.chat_input(f"Ask about {st.session_state.current_folder}..."):
+        st.session_state.folders[st.session_state.current_folder]['messages'].append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            all_notes = get_all_text(uploaded_files) if uploaded_files else "No specific notes uploaded."
+            # Get only the text for the current folder
+            current_notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
             
-            # The Focused Prompt Logic
             focused_prompt = f"""
-            SYSTEM INSTRUCTIONS: 
-            You are a focused Junior Core Accounting Tutor. 
-            Stay strictly on the topic the user asks about. 
-            Use the provided reference notes as your primary source.
-            If the answer is not in the notes, use your general accounting knowledge.
-
-            ### REFERENCE NOTES:
-            '''
-            {all_notes}
-            '''
-
-            ### USER QUESTION:
-            "{prompt}"
-
-            RESPONSE GUIDELINES:
-            1. Address the User Question directly and immediately.
-            2. Be concise but clear.
-            3. Stay Socratic (ask a follow-up question to test their logic).
-            4. Award '+10 XP' if the user's logic is correct.
+            SYSTEM: You are a Junior Core Accounting Tutor. 
+            FOLDER CONTEXT: {st.session_state.current_folder}
+            REFERENCE MATERIAL: '''{current_notes}'''
+            
+            USER QUESTION: "{prompt}"
+            
+            INSTRUCTIONS: Answer based on the reference material provided for this specific folder. 
+            If it's not there, use general knowledge but stay in the context of {st.session_state.current_folder}.
+            Award +10 XP for logic. Be Socratic.
             """
             
             response = model.generate_content(focused_prompt)
@@ -129,21 +130,19 @@ if st.session_state.mode == "chat":
                 st.session_state.xp += 10
                 st.balloons()
             st.markdown(response.text)
-            st.session_state.folders[st.session_state.current_folder].append({"role": "assistant", "content": response.text})
+            st.session_state.folders[st.session_state.current_folder]['messages'].append({"role": "assistant", "content": response.text})
 
-# --- MODE: MULTI-DOC QUIZ ---
+# --- MODE: QUIZ & GAME ---
 elif st.session_state.mode == "quiz":
-    st.header("📝 Smart Quiz Generator")
-    quiz_topic = st.text_input("Quiz Topic", placeholder="e.g. Revenue Recognition")
-    if st.button("Build Quiz"):
-        with st.spinner("Analyzing all documents..."):
-            res = model.generate_content(f"Create a 3-question quiz on {quiz_topic}. Use these notes as a source: {get_all_text(uploaded_files)}")
-            st.markdown(res.text)
+    st.header(f"📝 {st.session_state.current_folder} Quiz")
+    if st.button("Build Quiz from Folder Notes"):
+        notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
+        res = model.generate_content(f"Create a quiz based on these {st.session_state.current_folder} notes: {notes}")
+        st.markdown(res.text)
 
-# --- MODE: CONCEPT CHALLENGE (Game) ---
 elif st.session_state.mode == "game":
     st.header("🎮 Concept Challenge")
-    if st.button("Generate Random Concept"):
-        with st.spinner("Picking a concept..."):
-            res = model.generate_content(f"Pick one tough accounting concept from these notes and ask the user to explain it: {get_all_text(uploaded_files)}")
-            st.info(res.text)
+    if st.button("Generate Concept"):
+        notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
+        res = model.generate_content(f"Pick a concept from the {st.session_state.current_folder} notes: {notes}")
+        st.info(res.text)
