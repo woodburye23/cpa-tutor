@@ -1,48 +1,79 @@
 import streamlit as st
+import google.generativeai as genai
 
-st.set_page_config(page_title="CPA Socratic Lab", layout="wide")
+# 1. UI Configuration
+st.set_page_config(page_title="Junior Core Accounting Tutor", layout="wide")
 
-# 1. Initialize Game State
+# Initialize XP and Chat History
 if 'xp' not in st.session_state: st.session_state.xp = 0
 if 'messages' not in st.session_state: st.session_state.messages = []
 
-# 2. Sidebar UI
+# Rename and Style
+st.title("🎓 Junior Core Accounting Tutor")
+st.subheader("Your Personal CPA Prep Mentor")
+
+# 2. Setup the Live Connection
+try:
+    # This pulls the key you saved in Streamlit Secrets
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    
+    # Configure the model with your Gem's Personality
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        system_instruction="""
+        You are the Junior Core Accounting Tutor. 
+        Your personality: Supportive, professional, and Socratic.
+        Your goal: Help Ella master her 'Master Doc' for the CPA exam.
+        Rules: 
+        1. NEVER give the final answer immediately. 
+        2. Ask guiding questions to lead her to the logic.
+        3. When she gets a concept right, congratulate her and include the text '+10 XP' or '+20 XP'.
+        4. If she asks about Tax Basis, Cost Accounting, or Junior Core topics, use the Socratic method.
+        """
+    )
+    st.sidebar.success("✅ AI Brain Connected")
+except Exception as e:
+    st.sidebar.error("❌ Connection Error")
+    st.stop()
+
+# 3. Sidebar for Gamification
 with st.sidebar:
-    st.title("🏆 CPA Progress")
+    st.title("🏆 Progress Tracker")
     st.metric("Total XP", f"{st.session_state.xp}/100")
     st.progress(min(st.session_state.xp / 100, 1.0))
-    st.divider()
-    st.info("Rank: " + ("Accounting Intern" if st.session_state.xp < 50 else "Staff Accountant"))
-    st.write("Master Doc: **Loaded ✓**")
+    if st.button("Reset Session"):
+        st.session_state.xp = 0
+        st.session_state.messages = []
+        st.rerun()
 
-st.title("🎓 Socratic Accounting Tutor")
-st.caption("Custom AI Mentor for Ella's Junior Core")
-
-# 3. Display Chat History
+# 4. Chat Interface
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 4. Interactive "Brain"
-if prompt := st.chat_input("Ask a question about your Master Doc..."):
-    # Show User Message
+if prompt := st.chat_input("Ask a question from your Master Doc..."):
+    # Add user message to history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate "Socratic" Response instantly
+    # Generate LIVE response
     with st.chat_message("assistant"):
-        p = prompt.lower()
-        if "tax" in p or "basis" in p:
-            response = "That's a vital concept from your Master Doc. Instead of giving the answer, let's look at it this way: If you buy an asset for $50k and take a $10k deduction, what is the 'book value' remaining? That is your adjusted basis."
-        elif "8000" in p or "40000" in p or "correct" in p:
-            response = "Spot on! You've grasped the logic. **+20 XP** for applying the Master Doc principle correctly!"
-            st.session_state.xp += 20
-            st.balloons()
-        elif "cost" in p:
-            response = "In Cost Accounting (ACC 402), we focus on behavior. Is that a fixed cost or a variable cost based on your class notes?"
-        else:
-            response = "I see what you're asking. Let's refer to page 4 of your Master Doc—how does that principle apply to this specific scenario?"
-        
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        message_placeholder = st.empty()
+        try:
+            # The actual AI call
+            response = model.generate_content(prompt)
+            full_response = response.text
+            
+            # Update XP logic: If the AI awarded XP in its text, update the counter
+            if "+10 XP" in full_response:
+                st.session_state.xp += 10
+                st.balloons()
+            elif "+20 XP" in full_response:
+                st.session_state.xp += 20
+                st.balloons()
+
+            message_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            st.error(f"The AI Brain hit a snag: {e}")
