@@ -3,8 +3,9 @@ import google.generativeai as genai
 import time
 from PyPDF2 import PdfReader
 
-# 1. Page Config
-st.set_page_config(page_title="Junior Core Master Studio", layout="wide")
+# 1. Page Config & Branding
+APP_NAME = "CorePilot"
+st.set_page_config(page_title=APP_NAME, page_icon="🚀", layout="wide")
 
 # --- 2. BULLETPROOF INITIALIZATION ---
 if 'xp' not in st.session_state: st.session_state.xp = 0
@@ -14,7 +15,7 @@ if 'current_folder' not in st.session_state: st.session_state.current_folder = "
 if 'mode' not in st.session_state: st.session_state.mode = "chat"
 if 'sprint_end' not in st.session_state: st.session_state.sprint_end = None
 
-# Safety Check: If the app loads an old folder structure, reset it to the new one
+# Safety Check: If the app loads an old folder structure, reset it
 for f_name in list(st.session_state.folders.keys()):
     if not isinstance(st.session_state.folders[f_name], dict) or 'messages' not in st.session_state.folders[f_name]:
         st.session_state.folders[f_name] = {"messages": [], "files": []}
@@ -29,7 +30,7 @@ def init_ai():
 
 model = init_ai()
 
-# 4. Helper Function: Process Folder-Specific Files
+# 4. Helper Function: Process Folder-Specific Files (PDF & TXT)
 def process_folder_files(file_objects):
     combined_text = ""
     for file in file_objects:
@@ -56,75 +57,85 @@ def pomodoro_timer():
             st.session_state.sprint_end = None
             st.session_state.xp += 20
             st.balloons()
-            st.success("Focus Session Complete! +20 XP")
+            st.success("Session Complete! +20 XP")
             st.rerun()
     else:
         if st.button("🚀 Start Study Sprint"):
             st.session_state.sprint_end = time.time() + (25 * 60)
             st.rerun()
 
-# 6. Sidebar: The Folder & Storage System
+# 6. Sidebar: The Navigation & Storage System
 with st.sidebar:
-    st.title(f"🏆 {st.session_state.xp} XP")
-    st.progress(min(st.session_state.xp / 100, 1.0))
+    st.title(f"🚀 {APP_NAME}")
+    st.subheader(f"Level: {st.session_state.xp} XP")
+    st.progress(min(st.session_state.xp / 500, 1.0))
     st.divider()
     pomodoro_timer()
     st.divider()
     
     st.subheader("📁 Class Folders")
-    new_folder_name = st.text_input("Create New Folder", placeholder="e.g. Audit")
-    if st.button("Create") and new_folder_name:
+    new_folder_name = st.text_input("New Folder Name", placeholder="e.g. Audit, Tax")
+    if st.button("Create Folder") and new_folder_name:
         if new_folder_name not in st.session_state.folders:
             st.session_state.folders[new_folder_name] = {"messages": [], "files": []}
             st.session_state.current_folder = new_folder_name
             st.rerun()
 
-    st.session_state.current_folder = st.selectbox("Switch Folder", list(st.session_state.folders.keys()))
+    st.session_state.current_folder = st.selectbox("Current Focus", list(st.session_state.folders.keys()))
     
     st.divider()
     # FOLDER-SPECIFIC UPLOADER
-    st.subheader(f"📥 Folder Storage: {st.session_state.current_folder}")
-    uploaded = st.file_uploader("Upload to this folder", type=['pdf', 'txt'], accept_multiple_files=True, key=f"uploader_{st.session_state.current_folder}")
+    st.subheader(f"📥 {st.session_state.current_folder} Storage")
+    uploaded = st.file_uploader("Upload Master Docs", type=['pdf', 'txt'], accept_multiple_files=True, key=f"uploader_{st.session_state.current_folder}")
     
     if uploaded:
         st.session_state.folders[st.session_state.current_folder]['files'] = uploaded
         st.success(f"Grounded in {len(uploaded)} files.")
 
     st.divider()
-    if st.button("💬 Socratic Tutor"): st.session_state.mode = "chat"
+    if st.button("💬 Core Chat"): st.session_state.mode = "chat"
     if st.button("📝 Topic Quiz"): st.session_state.mode = "quiz"
-    if st.button("🎮 Challenge Mode"): st.session_state.mode = "game"
+    if st.button("🎮 Concept Challenge"): st.session_state.mode = "game"
 
 # 7. Main Content Area
-st.title(f"📂 {st.session_state.current_folder} Studio")
+st.title(f"🎓 {APP_NAME} | {st.session_state.current_folder}")
 
 if not model:
     st.error("AI connection failed. Check your API key!")
     st.stop()
 
-# --- MODE: CHAT (Focused on Folder Data) ---
+# --- MODE: CHAT (Focused Hybrid Logic) ---
 if st.session_state.mode == "chat":
     for msg in st.session_state.folders[st.session_state.current_folder]['messages']:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if prompt := st.chat_input(f"Discuss {st.session_state.current_folder}..."):
+    if prompt := st.chat_input(f"Ask {APP_NAME} a question..."):
         st.session_state.folders[st.session_state.current_folder]['messages'].append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
 
         with st.chat_message("assistant"):
             current_notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
             
+            # Using Delimiters to keep the AI on topic
             focused_prompt = f"""
-            SYSTEM: You are a Junior Core Accounting Tutor. Stay on topic.
-            FOLDER CONTEXT: {st.session_state.current_folder}
-            REFERENCE MATERIAL: '''{current_notes}'''
-            
-            USER QUESTION: "{prompt}"
-            
-            INSTRUCTIONS: Answer the user's question directly. 
-            Prioritize the REFERENCE MATERIAL for facts. 
-            If the answer isn't there, use general accounting knowledge.
-            Be Socratic, ask a follow-up, and award '+10 XP' for logic.
+            SYSTEM INSTRUCTIONS: 
+            You are {APP_NAME}, a focused Junior Core Accounting Tutor. 
+            Stay strictly on the user's specific question. 
+            Use the provided REFERENCE MATERIAL as your primary source of truth.
+
+            ### REFERENCE MATERIAL FOR {st.session_state.current_folder}:
+            '''
+            {current_notes}
+            '''
+
+            ### USER QUESTION:
+            "{prompt}"
+
+            RESPONSE GUIDELINES:
+            1. Address the User Question directly and immediately.
+            2. Be concise but clear.
+            3. Stay Socratic: ask a follow-up question to test the student's logic.
+            4. Award '+10 XP' if the user demonstrates correct reasoning.
             """
             
             response = model.generate_content(focused_prompt)
@@ -136,15 +147,15 @@ if st.session_state.mode == "chat":
 
 # --- MODE: QUIZ & GAME ---
 elif st.session_state.mode == "quiz":
-    st.header(f"📝 {st.session_state.current_folder} Quiz")
-    if st.button("Build Quiz from Folder Notes"):
+    st.header(f"📝 {st.session_state.current_folder} Knowledge Check")
+    if st.button("Build Quiz from Notes"):
         notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
-        res = model.generate_content(f"Create a 3-question quiz based on these notes: {notes}")
+        res = model.generate_content(f"Create a 3-question quiz on the topic of {st.session_state.current_folder} using these notes: {notes}")
         st.markdown(res.text)
 
 elif st.session_state.mode == "game":
-    st.header("🎮 Concept Challenge")
-    if st.button("Generate Concept"):
+    st.header("🎮 Concept Rapid Fire")
+    if st.button("Generate Random Challenge"):
         notes = process_folder_files(st.session_state.folders[st.session_state.current_folder]['files'])
-        res = model.generate_content(f"Pick a concept from the folder notes: {notes}")
+        res = model.generate_content(f"Pick a complex concept from the {st.session_state.current_folder} notes and ask the user to explain it: {notes}")
         st.info(res.text)
