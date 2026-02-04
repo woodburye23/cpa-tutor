@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. UI Configuration
+# 1. Page Config & State
 st.set_page_config(page_title="Junior Core Accounting Tutor", layout="wide")
 
 if 'xp' not in st.session_state: st.session_state.xp = 0
@@ -11,23 +11,26 @@ st.title("🎓 Junior Core Accounting Tutor")
 st.sidebar.title("🏆 Progress Tracker")
 st.sidebar.metric("Total XP", f"{st.session_state.xp}/100")
 
-# 2. Connection Logic with 2026 Model Names
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    
-    # Update: gemini-3-flash is the current stable high-speed model
-    # We use a list to try the newest models first
-    model_to_use = "gemini-3-flash" 
-    
-    model = genai.GenerativeModel(
-        model_name=model_to_use,
-        system_instruction="You are a Socratic Accounting Tutor. Use a supportive tone. Award +10 XP for correct logic."
-    )
-    
-    st.sidebar.success(f"✅ {model_to_use.upper()} Connected")
-except Exception as e:
-    st.sidebar.error("❌ Connection Error")
-    st.stop()
+# 2. 2026 Connection Fix
+@st.cache_resource
+def init_ai():
+    try:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        # In 2026, 'gemini-3-flash-preview' is the high-stability model for developers
+        model = genai.GenerativeModel('gemini-3-flash-preview')
+        # Silent test to ensure connection
+        model.generate_content("ping")
+        return model
+    except:
+        return None
+
+model = init_ai()
+
+if model:
+    st.sidebar.success("✅ Brain Active")
+else:
+    st.sidebar.error("❌ Connection Lag")
+    st.info("Tip: If this stays red, try clicking 'Reboot App' in the Streamlit menu.")
 
 # 3. Chat Logic
 for msg in st.session_state.messages:
@@ -41,15 +44,17 @@ if prompt := st.chat_input("Ask a question about your Master Doc..."):
 
     with st.chat_message("assistant"):
         try:
-            # Simple call without extra wrappers to avoid version conflicts
-            response = model.generate_content(prompt)
-            answer = response.text
+            # Socratic system instruction included in the live call
+            context = "You are a Socratic Accounting Tutor. Do not give answers. If user is correct, say +10 XP. Question: "
+            response = model.generate_content(context + prompt)
             
-            if "+10 XP" in answer:
+            if "+10 XP" in response.text:
                 st.session_state.xp += 10
                 st.balloons()
                 
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error("The Brain is still foggy. Try a shorter question or refresh!")
+            st.error("The API is still foggy. Let's try the 'Presentation Backup' mode.")
+            st.write("Socratic Hint: How does your Master Doc define the relationship between cost and volume?")
+            
