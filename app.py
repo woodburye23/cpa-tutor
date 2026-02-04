@@ -52,7 +52,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("📁 Class Folders")
-    new_folder = st.text_input("New Class/Topic", placeholder="e.g. Audit, Tax, Finance")
+    new_folder = st.text_input("New Class/Topic", placeholder="e.g. Audit, Tax")
     if st.button("Create Folder") and new_folder:
         st.session_state.folders[new_folder] = []
         st.session_state.current_folder = new_folder
@@ -62,43 +62,49 @@ with st.sidebar:
 
     st.divider()
     if st.button("💬 Socratic Tutor"): st.session_state.mode = "chat"
-    if st.button("📝 Master Doc Quiz"): st.session_state.mode = "quiz"
-    if st.button("🎮 Junior Core Challenge"): st.session_state.mode = "game"
+    if st.button("📝 Multi-Doc Quiz"): st.session_state.mode = "quiz"
+    if st.button("🎮 Concept Challenge"): st.session_state.mode = "game"
     
     st.divider()
-    uploaded_file = st.file_uploader("Upload Master Doc / Quizlet Export", type=['pdf', 'txt'])
-    if uploaded_file:
-        st.success("🟢 Document Grounding Active")
+    # UPDATED: Accept multiple files
+    uploaded_files = st.file_uploader("Upload Master Docs / Quizlets / Syllabus", type=['pdf', 'txt'], accept_multiple_files=True)
+    
+    if uploaded_files:
+        st.success(f"🟢 {len(uploaded_files)} Docs Grounded")
     else:
         st.warning("🟡 Using General Knowledge")
+
+# --- Helper Function to Read All Files ---
+def get_all_text(files):
+    combined_text = ""
+    for file in files:
+        combined_text += f"\n--- Source: {file.name} ---\n"
+        combined_text += file.getvalue().decode("utf-8")
+    return combined_text[:10000] # Limit to 10k characters for speed
 
 # 5. Main Content Area
 st.title(f"🎓 Junior Core: {st.session_state.current_folder}")
 
-# --- MODE: GAME (QUIZLET STYLE) ---
+# --- MODE: GAME ---
 if st.session_state.mode == "game":
-    st.header("🎮 Concept Challenge")
-    st.write("I'll pull a tough concept from your notes—you explain the logic!")
-    if st.button("Generate Concept"):
-        with st.spinner("Scanning notes..."):
-            context = "Pick a specific, difficult accounting concept from these notes and ask the user to explain it. "
-            if uploaded_file:
-                # Read file for the game
-                file_content = uploaded_file.getvalue().decode("utf-8")[:3000]
-                context += f"Source Material: {file_content}"
+    st.header("🎮 Multi-Doc Challenge")
+    if st.button("Generate Concept from My Docs"):
+        with st.spinner("Scanning all uploaded materials..."):
+            context = "Pick a specific, difficult concept from these notes. "
+            if uploaded_files:
+                context += f"Sources: {get_all_text(uploaded_files)}"
             res = model.generate_content(context)
             st.info(res.text)
 
 # --- MODE: CUSTOM QUIZ ---
 elif st.session_state.mode == "quiz":
-    st.header("📝 Custom Quiz Generator")
-    quiz_topic = st.text_input("What should the quiz focus on?", placeholder="e.g. 5 questions on Deferred Tax Assets")
+    st.header("📝 Comprehensive Quiz Gen")
+    quiz_topic = st.text_input("Topic", placeholder="e.g. Mixed quiz on Syllabus + Master Doc")
     if st.button("Build Quiz"):
-        with st.spinner("Analyzing..."):
+        with st.spinner("Analyzing all documents..."):
             prompt = f"Create a quiz on {quiz_topic}. "
-            if uploaded_file:
-                file_content = uploaded_file.getvalue().decode("utf-8")[:4000]
-                prompt += f"STRICTLY use ONLY these notes: {file_content}"
+            if uploaded_files:
+                prompt += f"STRICTLY use ONLY these combined sources: {get_all_text(uploaded_files)}"
             res = model.generate_content(prompt)
             st.markdown(res.text)
 
@@ -107,21 +113,18 @@ else:
     for msg in st.session_state.folders[st.session_state.current_folder]:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ask a question about the Master Doc..."):
+    if prompt := st.chat_input("Ask a question about your documents..."):
         st.session_state.folders[st.session_state.current_folder].append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            doc_context = ""
-            if uploaded_file:
-                # Grounding the chat in the file
-                file_content = uploaded_file.getvalue().decode("utf-8")[:4000]
-                doc_context = f"STRICT SOURCE MATERIAL: {file_content}. "
+            all_doc_content = ""
+            if uploaded_files:
+                all_doc_content = f"STRICT SOURCE MATERIAL: {get_all_text(uploaded_files)}. "
             
             sys_msg = (
-                f"You are the Junior Core Accounting Tutor. {doc_context} "
-                "Socratic Method: NEVER give direct answers. Guide the student through the logic. "
-                "If the student shows correct reasoning based on the source, award '+10 XP'. "
+                f"You are the Junior Core Accounting Tutor. {all_doc_content} "
+                "Socratic Method: Lead the student. Award '+10 XP' for correct reasoning based on these specific documents."
                 f"User: {prompt}"
             )
             response = model.generate_content(sys_msg)
