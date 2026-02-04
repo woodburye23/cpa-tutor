@@ -24,7 +24,7 @@ def init_ai():
 
 model = init_ai()
 
-# 3. Helper Function
+# 3. Helper Function to Read PDFs and Text
 def get_all_text(files):
     combined_text = ""
     for file in files:
@@ -39,7 +39,7 @@ def get_all_text(files):
         except: continue
     return combined_text[:15000]
 
-# 4. Timer Fragment
+# 4. Smart Timer Fragment
 @st.fragment(run_every=1.0)
 def pomodoro_timer():
     if st.session_state.sprint_end:
@@ -65,66 +65,85 @@ with st.sidebar:
     st.divider()
     pomodoro_timer()
     st.divider()
-    st.subheader("📁 Folders")
-    new_folder = st.text_input("New Folder")
-    if st.button("Create") and new_folder:
-        st.session_state.folders[new_folder] = []
-        st.session_state.current_folder = new_folder
-        st.rerun()
-    st.session_state.current_folder = st.selectbox("Focus", list(st.session_state.folders.keys()))
+    st.subheader("📁 Class Folders")
+    new_folder = st.text_input("New Folder Name")
+    if st.button("Create Folder") and new_folder:
+        if new_folder not in st.session_state.folders:
+            st.session_state.folders[new_folder] = []
+            st.session_state.current_folder = new_folder
+            st.rerun()
+    st.session_state.current_folder = st.selectbox("Current Focus", list(st.session_state.folders.keys()))
     st.divider()
     if st.button("💬 Socratic Tutor"): st.session_state.mode = "chat"
     if st.button("📝 Multi-Doc Quiz"): st.session_state.mode = "quiz"
     if st.button("🎮 Concept Challenge"): st.session_state.mode = "game"
     st.divider()
     uploaded_files = st.file_uploader("Upload Notes (PDF/TXT)", type=['pdf', 'txt'], accept_multiple_files=True)
+    if uploaded_files:
+        st.success(f"🟢 {len(uploaded_files)} Docs Grounded")
 
 # 6. Main Content Area
 st.title(f"🎓 {st.session_state.current_folder}")
 
 if not model:
-    st.error("AI connection failed.")
+    st.error("AI connection failed. Check your API key!")
     st.stop()
 
-# --- MODE: CHAT (The Hybrid Tutor) ---
+# --- MODE: CHAT (The Focused Hybrid Tutor) ---
 if st.session_state.mode == "chat":
     for msg in st.session_state.folders[st.session_state.current_folder]:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ask anything..."):
+    if prompt := st.chat_input("Ask a specific question..."):
         st.session_state.folders[st.session_state.current_folder].append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            # HYBRID LOGIC: If files exist, use them as 'Priority Knowledge'
-            all_notes = get_all_text(uploaded_files) if uploaded_files else "No specific notes uploaded yet."
+            all_notes = get_all_text(uploaded_files) if uploaded_files else "No specific notes uploaded."
             
-            sys_msg = (
-                f"You are a helpful Socratic Accounting Tutor. "
-                f"PRIORITY NOTES: {all_notes}\n\n"
-                "INSTRUCTION: Answer the user's question. If the answer is in the PRIORITY NOTES, "
-                "use that wording. If it is NOT in the notes, use your general knowledge to explain "
-                "the concept clearly. Always be Socratic (ask questions) and award '+10 XP' for logic. "
-                f"User Question: {prompt}"
-            )
+            # The Focused Prompt Logic
+            focused_prompt = f"""
+            SYSTEM INSTRUCTIONS: 
+            You are a focused Junior Core Accounting Tutor. 
+            Stay strictly on the topic the user asks about. 
+            Use the provided reference notes as your primary source.
+            If the answer is not in the notes, use your general accounting knowledge.
+
+            ### REFERENCE NOTES:
+            '''
+            {all_notes}
+            '''
+
+            ### USER QUESTION:
+            "{prompt}"
+
+            RESPONSE GUIDELINES:
+            1. Address the User Question directly and immediately.
+            2. Be concise but clear.
+            3. Stay Socratic (ask a follow-up question to test their logic).
+            4. Award '+10 XP' if the user's logic is correct.
+            """
             
-            response = model.generate_content(sys_msg)
+            response = model.generate_content(focused_prompt)
             if "+10 XP" in response.text:
                 st.session_state.xp += 10
                 st.balloons()
             st.markdown(response.text)
             st.session_state.folders[st.session_state.current_folder].append({"role": "assistant", "content": response.text})
 
-# --- MODES: QUIZ & GAME ---
+# --- MODE: MULTI-DOC QUIZ ---
 elif st.session_state.mode == "quiz":
-    st.header("📝 Smart Quiz Gen")
-    quiz_topic = st.text_input("Topic")
+    st.header("📝 Smart Quiz Generator")
+    quiz_topic = st.text_input("Quiz Topic", placeholder="e.g. Revenue Recognition")
     if st.button("Build Quiz"):
-        res = model.generate_content(f"Create a quiz on {quiz_topic}. Use these notes if relevant: {get_all_text(uploaded_files)}")
-        st.markdown(res.text)
+        with st.spinner("Analyzing all documents..."):
+            res = model.generate_content(f"Create a 3-question quiz on {quiz_topic}. Use these notes as a source: {get_all_text(uploaded_files)}")
+            st.markdown(res.text)
 
+# --- MODE: CONCEPT CHALLENGE (Game) ---
 elif st.session_state.mode == "game":
     st.header("🎮 Concept Challenge")
-    if st.button("Generate Concept"):
-        res = model.generate_content(f"Ask me a hard accounting question from these notes: {get_all_text(uploaded_files)}")
-        st.info(res.text)
+    if st.button("Generate Random Concept"):
+        with st.spinner("Picking a concept..."):
+            res = model.generate_content(f"Pick one tough accounting concept from these notes and ask the user to explain it: {get_all_text(uploaded_files)}")
+            st.info(res.text)
