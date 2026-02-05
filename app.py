@@ -83,6 +83,16 @@ with st.sidebar:
 
     st.session_state.current_folder = st.selectbox("Current Focus", list(st.session_state.folders.keys()))
     
+    # --- ADDED: CANVAS COMMAND CENTER ---
+    st.divider()
+    st.subheader("🎓 Canvas Dashboard")
+    with st.container():
+        st.link_button("📊 Acc 402: Financial", "https://byu.instructure.com/courses/33104", use_container_width=True)
+        st.link_button("⚖️ Acc 405: Tax", "https://byu.instructure.com/courses/33109", use_container_width=True)
+        st.link_button("📑 Acc 407: Audit", "https://byu.instructure.com/courses/33113", use_container_width=True)
+        st.link_button("📈 Acc 409: Strategy", "https://byu.instructure.com/courses/33118", use_container_width=True)
+        st.link_button("💻 Acc 411: Systems", "https://byu.instructure.com/courses/33065", use_container_width=True)
+    
     st.divider()
     # FOLDER-SPECIFIC UPLOADER
     st.subheader(f"📥 {st.session_state.current_folder} Storage")
